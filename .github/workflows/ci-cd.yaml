@@ -2,10 +2,11 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
+  IMAGE: ghcr.io/eronsalih/inspire-ink
 
 jobs:
   build-and-push:
