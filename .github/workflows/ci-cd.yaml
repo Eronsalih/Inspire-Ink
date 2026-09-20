@@ -36,6 +36,10 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      packages: read
+
     steps:
       - name: SSH and redeploy
         uses: appleboy/ssh-action@v1
@@ -43,10 +47,14 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          port: 22
+          timeout: 60s
+          command_timeout: 10m
 
           script: |
-            cd /path/to/project
+            cd /home/azureuser/Inspire-Ink
+
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
             docker compose -f docker-compose.prod.yml pull
 
