@@ -1,4 +1,4 @@
-name: Build and Deploy
+name: CI/CD Pipeline
 
 on:
   push:
@@ -6,18 +6,16 @@ on:
       - main
 
 env:
-  IMAGE: ghcr.io/eronsalih/inspire-ink
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/eronsalih/inspire-ink-backend
+  FRONTEND_IMAGE: ghcr.io/eronsalih/inspire-ink-frontend
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Login to GHCR
@@ -27,21 +25,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+
+      - name: Build and push frontend
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
           push: true
           tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.FRONTEND_IMAGE }}:latest
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
 
     steps:
-      - name: SSH and redeploy
+      - name: SSH and redeploy with docker compose
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -49,11 +56,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            docker pull ghcr.io/eronsalih/inspire-ink:latest
-            docker stop frontend || true
-            docker rm frontend || true
-            docker run -d \
-              --name frontend \
-              --restart unless-stopped \
-              -p 80:80 \
-              ghcr.io/eronsalih/inspire-ink:latest
+            cd /path/to/project
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
