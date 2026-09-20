@@ -5,14 +5,13 @@ on:
     branches:
       - main
 
-env:
-  REGISTRY: ghcr.io
-  BACKEND_IMAGE: ghcr.io/eronsalih/inspire-ink-backend
-  FRONTEND_IMAGE: ghcr.io/eronsalih/inspire-ink-frontend
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout code
@@ -25,38 +24,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push backend
-        uses: docker/build-push-action@v6
-        with:
-          context: ./backend
-          push: true
-          tags: |
-            ${{ env.BACKEND_IMAGE }}:latest
-            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+      - name: Build services with Docker Compose
+        run: |
+          docker compose -f docker-compose.prod.yml build
 
-      - name: Build and push frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          push: true
-          tags: |
-            ${{ env.FRONTEND_IMAGE }}:latest
-            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+      - name: Push services with Docker Compose
+        run: |
+          docker compose -f docker-compose.prod.yml push
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
 
     steps:
-      - name: SSH and redeploy with docker compose
+      - name: SSH and redeploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
+
           script: |
             cd /path/to/project
+
             docker compose -f docker-compose.prod.yml pull
+
             docker compose -f docker-compose.prod.yml up -d
+
             docker image prune -f
