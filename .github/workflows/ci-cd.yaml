@@ -21,14 +21,14 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build services with Docker Compose
         run: |
           docker compose -f docker-compose.prod.yml build
 
-      - name: Push services with Docker Compose
+      - name: Push services to GHCR
         run: |
           docker compose -f docker-compose.prod.yml push
 
@@ -41,23 +41,47 @@ jobs:
       packages: read
 
     steps:
-      - name: SSH and redeploy
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create project directory on VM
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: 22
-          timeout: 60s
-          command_timeout: 10m
+          script: |
+            mkdir -p /home/azureuser/Inspire-Ink
 
+      - name: Copy Docker Compose file to VM
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          source: "docker-compose.prod.yml"
+          target: "/home/azureuser/Inspire-Ink"
+
+      - name: Pull and deploy on VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
           script: |
             cd /home/azureuser/Inspire-Ink
 
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+              -u "${{ github.repository_owner }}" \
+              --password-stdin
 
             docker compose -f docker-compose.prod.yml pull
 
             docker compose -f docker-compose.prod.yml up -d
 
             docker image prune -f
+
+            docker compose -f docker-compose.prod.yml ps
