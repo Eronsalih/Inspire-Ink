@@ -1,60 +1,43 @@
-name: CI/CD Pipeline
+name: Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Login to GHCR
+      - name: Login te GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build services with Docker Compose
-        run: |
-          docker compose -f docker-compose.prod.yml build
+      - name: Build dhe push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: ghcr.io/eronsalih/inspire-ink-frontend:latest
 
-      - name: Push services to GHCR
-        run: |
-          docker compose -f docker-compose.prod.yml push
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      packages: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create project directory on VM
+      - name: Krijo folderin në VM
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: 22
-          script: |
-            mkdir -p /home/azureuser/Inspire-Ink
+          script: mkdir -p /home/azureuser/Inspire-Ink
 
-      - name: Copy Docker Compose file to VM
+      - name: Kopjo Docker Compose në VM
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -64,7 +47,7 @@ jobs:
           source: "docker-compose.prod.yml"
           target: "/home/azureuser/Inspire-Ink"
 
-      - name: Pull and deploy on VM
+      - name: Pull dhe deploy në VM
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -73,18 +56,10 @@ jobs:
           port: 22
           script: |
             cd /home/azureuser/Inspire-Ink
-
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
               -u "${{ github.repository_owner }}" \
               --password-stdin
-
             docker compose -f docker-compose.prod.yml pull
-
             docker compose -f docker-compose.prod.yml up -d
-
             docker image prune -f
-
-            
-
             docker compose -f docker-compose.prod.yml ps
-
