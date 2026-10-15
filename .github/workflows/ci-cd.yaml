@@ -1,4 +1,4 @@
-name: Deploy
+name: CI/CD
 
 on:
   push:
@@ -9,24 +9,37 @@ permissions:
   packages: write
 
 jobs:
-  build-and-deploy:
+  # ---------- JOB 1: ndërto dhe dërgo të dy imazhet ----------
+  build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: frontend
+            context: ./frontend
+          - name: backend
+            context: ./backend
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login te GHCR
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build dhe push
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
-          context: ./frontend
+          context: ${{ matrix.context }}
           push: true
-          tags: ghcr.io/eronsalih/inspire-ink-frontend:latest
+          tags: ghcr.io/eronsalih/inspire-ink-${{ matrix.name }}:latest
+
+  # ---------- JOB 2: deploy në VM (vetëm nëse job 1 kaloi) ----------
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Krijo folderin në VM
         uses: appleboy/ssh-action@v1
@@ -34,31 +47,26 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          port: 22
           script: mkdir -p /home/azureuser/Inspire-Ink
 
-      - name: Kopjo Docker Compose në VM
+      - name: Kopjo compose file
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          port: 22
           source: "docker-compose.prod.yml"
           target: "/home/azureuser/Inspire-Ink"
 
-      - name: Pull dhe deploy në VM
+      - name: Pull dhe nis container-ët
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          port: 22
           script: |
             cd /home/azureuser/Inspire-Ink
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
-              -u "${{ github.repository_owner }}" \
-              --password-stdin
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
             docker image prune -f
