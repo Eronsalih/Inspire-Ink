@@ -1,85 +1,31 @@
 services:
-
-
-  db:
-    image: postgres:16-alpine
-    container_name: inspire-db
+  frontend:
+    image: ghcr.io/eronsalih/inspire-ink-frontend:${TAG:-latest}
     restart: unless-stopped
-
-    environment:
-      POSTGRES_DB: inspire_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-    networks:
-      - inspire-network
-
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d inspire_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-
+    ports:
+      - "127.0.0.1:3000:80" # i vetmi port i hapur, dhe vetëm brenda VM-së
+    depends_on:
+      - backend
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-
-    image: ghcr.io/eronsalih/inspire-ink-backend:latest
-
-    container_name: inspire-backend
+    image: ghcr.io/eronsalih/inspire-ink-backend:${TAG:-latest}
     restart: unless-stopped
-
-    environment:
-      DB_HOST: db
-      DB_NAME: inspire_db
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_PORT: 5432
-
-    ports:
-      - "8000:8000"
-
+    env_file: .env
     depends_on:
       db:
         condition: service_healthy
 
-    networks:
-      - inspire-network
-
-
- 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-
-    image: ghcr.io/eronsalih/inspire-ink-frontend:latest
-
-    container_name: inspire-frontend
+  db:
+    image: postgres:16
     restart: unless-stopped
-
-    ports:
-      - "80:80"
-
-    depends_on:
-      - backend
-
-    networks:
-      - inspire-network
-
-
+    env_file: .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
-  postgres_data:
-
-
-
-networks:
-  inspire-network:
-    driver: bridge
+  pgdata:
